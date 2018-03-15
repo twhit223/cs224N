@@ -8,6 +8,7 @@ import os
 import re
 import copy
 import gensim
+
 from keras.models import load_model
 
 from collections import Counter
@@ -15,17 +16,19 @@ from collections import Counter
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
 
+from sklearn.preprocessing import OneHotEncoder
+
 # Set variables
 num_features = 10000
-len_revs = 200
+len_revs = 100
 
-### Import the reviews
+### Import the reviews as a list
 def import_reviews(filename):
   
   revs_raw = open("data/" + filename, "r").read().split('\n')
-  print("Preprocessing reviews..")
+  print("Preprocessing reviews...")
   processed_revs = []
-  scores = []
+  scores = np.array((len(revs_raw), ))
   all_words = []
   print(len(revs_raw))
   count = 0
@@ -55,7 +58,7 @@ def import_reviews(filename):
     if len(rev_words) > max_length: max_length = len(rev_words)
 
     processed_revs.append(rev_words)
-    scores.append(score)
+    np.append(scores, score)
 
   return all_words, processed_revs, scores
 
@@ -73,76 +76,89 @@ def flatten(seq,container=None):
 
 ### Convert the reviews to one-hot bag of words vectors
 # Takes an input that is a list of lists. Each list in the list contains a single review, with one element for each word.
-def integer_encode(all_words, revs, num_words):
-  
+def one_hot_encode(all_words, revs, num_words):
+
   # Get the 10k most common words as a dict with the form word:position
-  count = [['UNK', -1]]
-  count.extend(Counter(all_words).most_common(num_words - 1))
+  print("Creating bag of words dictionary...")
+  count = [['PAD', -1], ['UNK', -1]]
+  count.extend(Counter(all_words).most_common(num_words - 2))
   dictionary = dict()
   for word, _ in count:
     dictionary[word] = len(dictionary)
-  revs_int_encoded = [[dictionary[word] if word in dictionary else 0 for word in rev] for rev in revs]
+  
+  # Create a 200-length integer vector for each review
+  print("Integer encoding reviews...")
+  revs_int_encoded = [[dictionary[word] if word in dictionary else dictionary['UNK'] for word in rev] + [dictionary['PAD']]*(200-len(rev)) for rev in revs]
+  
+  # Create the one-hot vectors from the integer vectors
+  print("One-hot encoding reviews...")
+  enc = OneHotEncoder(n_values = 10000)
+  enc.fit(revs_int_encoded)
+  revs_one_hot_encoded = enc.transform(revs_int_encoded).toarray()
+  print("All encoding complete...")
+
+  # Get the counts for 'PAD' and 'UNK' and create the lookup table
   flat = flatten(revs_int_encoded)
   count[0][1] = flat.count(0)
+  count[1][1] = flat.count(1)
   reversed_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
 
-  revs_one_hot_encoded = [np.eye(num_words)[rev] for rev in revs_int_encoded]
+  # Convert revs_int_encoded to numpy array
+  revs_int_encoded = np.array(revs_int_encoded)
 
-  code.interact(local = locals())
-
-  return revs_int_encoded, count, dictionary, reversed_dictionary
-
-
-### Convert the reviews to word2vec bag of words vectors
-def word2vec_encode(revs):
-
-  model = gensim.models.Word2Vec.load_word2vec_format('data/GoogleNews-vectors-negative300.bin', binary=True)
-  zero = np.zeros(300)
-  revs_word2vec_encoded = [[model[word] if word in model.wv.vocab else zero for word in rev] for rev in revs]
-
-  return revs_word2vec_encoded
+  return revs_one_hot_encoded, revs_int_encoded, count, dictionary, reversed_dictionary
 
 
-### Convert the reviews to GloVe vectors
-def load_glove_model(gloveFile):
-    print ("Loading Glove Model")
-    f = open(gloveFile,'r')
-    model = {}
-    for line in f:
-        splitLine = line.split()
-        word = splitLine[0]
-        embedding = np.array([float(val) for val in splitLine[1:]])
-        model[word] = embedding
-    print ("Done.",len(model)," words loaded!")
-    return model
+# ### Convert the reviews to word2vec bag of words vectors
+# def word2vec_encode(revs):
 
-def glove_encode(revs):
+#   model = gensim.models.Word2Vec.load_word2vec_format('data/GoogleNews-vectors-negative300.bin', binary=True)
+#   zero = np.zeros(300)
+#   revs_word2vec_encoded = [[model[word] if word in model.wv.vocab else zero for word in rev] for rev in revs]
 
-  model = load_glove_model('data/glove.42B.300d.txt')
-  zero = np.zeros(100)
-  revs_glove_encoded = [[model[word] if word in model else zero for word in rev] for rev in revs]
+#   return revs_word2vec_encoded
 
-  return revs_glove_encoded
 
-### Convert the words to CoVe vectors
-def cove_encode(revs_glove_encoded):
+# ### Convert the reviews to GloVe vectors
+# def load_glove_model(gloveFile):
+#     print ("Loading Glove Model")
+#     f = open(gloveFile,'r')
+#     model = {}
+#     for line in f:
+#         splitLine = line.split()
+#         word = splitLine[0]
+#         embedding = np.array([float(val) for val in splitLine[1:]])
+#         model[word] = embedding
+#     print ("Done.",len(model)," words loaded!")
+#     return model
 
-  cove_model = load_model('Keras_CoVe.h5')
-  # Pass each review into the glove model
-  revs_cove_encoded = np.array()
-  code.interact(local = locals())
-  for rev in revs_glove_encoded:
-    rev_reshaped = np.reshape(rev, (1, len(rev), 300))
-    revs_cove_encoded.append(cove_model.predict(rev))
+# def glove_encode(revs):
 
-  return revs_cove_encoded
+#   model = load_glove_model('data/glove.42B.300d.txt')
+#   zero = np.zeros(100)
+#   revs_glove_encoded = [[model[word] if word in model else zero for word in rev] for rev in revs]
+
+#   return revs_glove_encoded
+
+# ### Convert the words to CoVe vectors
+# def cove_encode(revs_glove_encoded):
+
+#   cove_model = load_model('Keras_CoVe.h5')
+#   # Pass each review into the glove model
+#   revs_cove_encoded = np.array()
+#   code.interact(local = locals())
+#   for rev in revs_glove_encoded:
+#     rev_reshaped = np.reshape(rev, (1, len(rev), 300))
+#     revs_cove_encoded.append(cove_model.predict(rev))
+
+#   return revs_cove_encoded
 
 
 filename = 'reviews_control_private.txt'
 all_words, revs, scores = import_reviews(filename)
-revs_int_encoded, count, dictionary, reversed_dict = integer_encode(all_words, revs, num_features)
-# revs_word2vec_encoded = word2vec_encode(revs)
-revs_glove_encoded = glove_encode(revs)
-revs_cove_encoded = cove_encode(revs_glove_encoded)
+revs_one_hot_encoded, revs_int_encoded, count, dictionary, reversed_dict = one_hot_encode(all_words, revs, num_features)
+# # revs_word2vec_encoded = word2vec_encode(revs)
+# revs_glove_encoded = glove_encode(revs)
+# revs_cove_encoded = cove_encode(revs_glove_encoded)
 
 code.interact(local = locals())
