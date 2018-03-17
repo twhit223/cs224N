@@ -10,18 +10,15 @@ from __future__ import division
 import argparse
 import sys
 import time
-import code
 import logging
-import pickle
 from datetime import datetime
 
 import tensorflow as tf
 
 from util import print_sentence, write_conll
 from data_util import load_and_preprocess_data, load_embeddings, read_conll, ModelHelper
-from model import Model
-from defs import LBLS
 from ner_model import NERModel
+from defs import LBLS
 #from report import Report
 
 logger = logging.getLogger("hw3.q1")
@@ -37,16 +34,17 @@ class Config:
 
     TODO: Fill in what n_window_features should be, using n_word_features and window_size.
     """
-    n_word_features = 1 # Number of features for every word in the input.
-    rev_length = 200
-    ### YOUR CODE HERE
-    n_rev_features = n_word_features * rev_length # The total number of features used for each window.
-    ### END YOUR CODE
+    # Represent each word as a single integer ranging from 1 to 10,000 with 2 special words for unknown words and padding
+    n_word_features = 1
+    # Number of words in a single review
+    rev_size = 200
+    # The total number of features used for each review
+    n_rev_features = n_word_features * rev_size
     n_classes = 5
     dropout = 0.5
-    embed_size = 50
-    hidden_size1 = 200
-    hidden_size2 = 200
+    # Number of features for every embedded word. Changes depending on the type of embedding to be used: one-hot (10,000), word2vec (200), GloVe (300), CoVe (600)
+    embed_size = 300
+    hidden_size = 200
     batch_size = 2048
     n_epochs = 10
     lr = 0.001
@@ -56,16 +54,70 @@ class Config:
             # Where to save things.
             self.output_path = output_path
         else:
-            self.output_path = "results/glassdoor/{:%Y%m%d_%H%M%S}/".format(datetime.now())
+            self.output_path = "results/rev/{:%Y%m%d_%H%M%S}/".format(datetime.now())
         self.model_output = self.output_path + "model.weights"
         self.eval_output = self.output_path + "results.txt"
         self.log_output = self.output_path + "log"
-        self.conll_output = self.output_path + "glassdoor_predictions.conll"
+        self.conll_output = self.output_path + "rev_predictions.conll"
 
+## REPLACE MAKE WINDOW DATA WITH SOMETHING THAT IMPORTS THE REVIEWS
+def make_windowed_data(data, start, end, window_size = 1):
+    """Uses the input sequences in @data to construct new windowed data points.
 
+    TODO: In the code below, construct a window from each word in the
+    input sentence by concatenating the words @window_size to the left
+    and @window_size to the right to the word. Finally, add this new
+    window data point and its label. to windowed_data.
 
+    Args:
+        data: is a list of (sentence, labels) tuples. @sentence is a list
+            containing the words in the sentence and @label is a list of
+            output labels. Each word is itself a list of
+            @n_features features. For example, the sentence "Chris
+            Manning is amazing" and labels "PER PER O O" would become
+            ([[1,9], [2,9], [3,8], [4,8]], [1, 1, 4, 4]). Here "Chris"
+            the word has been featurized as "[1, 9]", and "[1, 1, 4, 4]"
+            is the list of labels.
+        start: the featurized `start' token to be used for windows at the very
+            beginning of the sentence.
+        end: the featurized `end' token to be used for windows at the very
+            end of the sentence.
+        window_size: the length of the window to construct.
+    Returns:
+        a new list of data points, corresponding to each window in the
+        sentence. Each data point consists of a list of
+        @n_window_features features (corresponding to words from the
+        window) to be used in the sentence and its NER label.
+        If start=[5,8] and end=[6,8], the above example should return
+        the list
+        [([5, 8, 1, 9, 2, 9], 1),
+         ([1, 9, 2, 9, 3, 8], 1),
+         ...
+         ]
+    """
 
-class GlassdoorModel(NERModel):
+    windowed_data = []
+    for sentence, labels in data:
+		### YOUR CODE HERE (5-20 lines)
+        # For each word in the sentence, we need to:
+        # 1. Get it's associated label at the same point in the list
+        # 2. Get the context window it belongs to
+        # 3. Create the tuple with a list of length n_window_features and the corresponding label
+        for i in range(0,len(labels)):
+            lab = labels[i]
+            win = []
+            for j in range(-window_size, window_size + 1):
+                if i + j < 0:
+                    win.extend(start)
+                elif i + j >= len(labels):
+                    win.extend(end)
+                else:
+                    win.extend(sentence[i+j])
+            windowed_data.append((win,lab))
+		### END YOUR CODE
+    return windowed_data
+
+class WindowModel(NERModel):
     """
     Implements a feedforward neural network with an embedding layer and
     single hidden layer.
@@ -82,7 +134,7 @@ class GlassdoorModel(NERModel):
 
         Adds following nodes to the computational graph
 
-        input_placeholder: Input placeholder tensor of  shape (None, n_rev_features), type tf.int32
+        input_placeholder: Input placeholder tensor of  shape (None, n_window_features), type tf.int32
         labels_placeholder: Labels placeholder tensor of shape (None,), type tf.int32
         dropout_placeholder: Dropout value placeholder (scalar), type tf.float32
 
@@ -94,9 +146,9 @@ class GlassdoorModel(NERModel):
         (Don't change the variable names)
         """
         ### YOUR CODE HERE (~3-5 lines)
-        self.input_placeholder = tf.placeholder(shape = (None, self.config.n_rev_features), dtype = tf.float32)
-        self.labels_placeholder = tf.placeholder(shape = (None,), dtype = tf.int32)
-        self.dropout_placeholder = tf.placeholder(dtype = tf.float32)
+        self.input_placeholder = tf.placeholder(name = 'input_placeholder', dtype = tf.int32, shape = (None, self.config.n_window_features))
+        self.labels_placeholder = tf.placeholder(name = 'labels_placeholder', dtype = tf.int32, shape = (None, ))
+        self.dropout_placeholder = tf.placeholder(name = 'dropout_placeholder', dtype =tf.float32, shape = [])
         ### END YOUR CODE
 
     def create_feed_dict(self, inputs_batch, labels_batch=None, dropout=1):
@@ -119,11 +171,10 @@ class GlassdoorModel(NERModel):
             feed_dict: The feed dictionary mapping from placeholders to values.
         """
         ### YOUR CODE HERE (~5-10 lines)
-        feed_dict = {self.dropout_placeholder: dropout}
-        if inputs_batch is not None:
-        	feed_dict[self.input_placeholder] = inputs_batch
-        if labels_batch is not None:
-            feed_dict[self.labels_placeholder] = labels_batch 
+        feed_dict = {}
+        if inputs_batch is not None: feed_dict[self.input_placeholder] = inputs_batch
+        if labels_batch is not None: feed_dict[self.labels_placeholder] = labels_batch
+        feed_dict[self.dropout_placeholder] = dropout
         ### END YOUR CODE
         return feed_dict
 
@@ -143,14 +194,13 @@ class GlassdoorModel(NERModel):
         Returns:
             embeddings: tf.Tensor of shape (None, n_window_features*embed_size)
         """
-        ### I THINK THIS IS WHERE YOUR STUFF GOES TYLER; YOUR EMBEDDING FOR THE DIFFERENT CASES
-
-
-        #embeddings = tf.Variable(self.pretrained_embeddings)
-        #embeddings = tf.nn.embedding_lookup(embeddings, self.input_placeholder)
-        #embeddings = tf.reshape(embeddings, [-1, self.config.n_window_features * self.config.embed_size]) 
-        embeddings = self.input_placeholder 
-                                                                                                      
+        ### YOUR CODE HERE (!3-5 lines)
+        # Initialize the embeddings that have an embedding for each word, w, in the vocabulary, V. 
+        vocab = tf.get_variable(name = "vocab_embedded", shape = None, dtype = tf.float32, initializer = self.pretrained_embeddings)
+        # Take each row of the input placeholder. Each element corresponds to a row in the embeddings tensor. 
+        embeddings = tf.nn.embedding_lookup(vocab, self.input_placeholder, name = 'embeddings') 
+        # Reshape the embeddings to match the size
+        embeddings = tf.reshape(embeddings, [-1, self.config.n_window_features*self.config.embed_size])                                                                                                                                                                
         ### END YOUR CODE
         return embeddings
 
@@ -181,20 +231,21 @@ class GlassdoorModel(NERModel):
         x = self.add_embedding()
         dropout_rate = self.dropout_placeholder
         ### YOUR CODE HERE (~10-20 lines)
+        # Initialize some useful things
+        xav = tf.contrib.layers.xavier_initializer()
 
-        b1 = tf.Variable(tf.zeros((self.config.hidden_size1,)))
-        b2 = tf.Variable(tf.zeros((self.config.hidden_size2,)))
-        b3 = tf.Variable(tf.zeros((self.config.n_classes,)))
-        W1 = tf.get_variable("W1", shape = (self.config.n_rev_features * self.config.embed_size, self.config.hidden_size1), initializer = tf.contrib.layers.xavier_initializer())
-        W2 = tf.get_variable("W2", shape = (self.config.hidden_size1, self.config.hidden_size2), initializer = tf.contrib.layers.xavier_initializer())
-        W3 = tf.get_variable("W3", shape = (self.config.hidden_size2, self.config.n_classes), initializer = tf.contrib.layers.xavier_initializer())
-
-        z1 = tf.nn.relu(tf.matmul(x, W1) + b1)
-        z1_drop = tf.nn.dropout(z1, dropout_rate)
-        z2 = tf.nn.relu(tf.matmul(z1_drop, W2) + b2)
-        z2_drop = tf.nn.dropout(z2, dropout_rate)
-        pred = tf.matmul(z2_drop, W3) + b3
-
+        # Create the variables that will be trained
+        w_shape = (self.config.n_window_features*self.config.embed_size, self.config.hidden_size)
+        u_shape = (self.config.hidden_size, self.config.n_classes)
+        W = tf.get_variable( name = 'W', shape = w_shape, dtype = tf.float32, initializer = xav)
+        U = tf.get_variable( name = 'U', shape = u_shape, dtype = tf.float32, initializer = xav)
+        b1 = tf.get_variable(name = 'b1', shape = (self.config.hidden_size), dtype = tf.float32, initializer = tf.zeros_initializer)
+        b2 = tf.get_variable(name = 'b2', shape = (self.config.n_classes), dtype = tf.float32, initializer = tf.zeros_initializer)
+        
+        # Create the operations
+        h = tf.nn.relu(tf.matmul(x, W) + b1)
+        h_drop = tf.nn.dropout(h, dropout_rate)
+        pred = tf.matmul(h_drop, U) + b2
         ### END YOUR CODE
         return pred
 
@@ -212,8 +263,7 @@ class GlassdoorModel(NERModel):
             loss: A 0-d tensor (scalar)
         """
         ### YOUR CODE HERE (~2-5 lines)
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels = self.labels_placeholder, logits = pred)
-        loss = tf.reduce_mean(loss)                          
+        loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels = self.labels_placeholder, logits = pred))                          
         ### END YOUR CODE
         return loss
 
@@ -237,12 +287,25 @@ class GlassdoorModel(NERModel):
             train_op: The Op for training.
         """
         ### YOUR CODE HERE (~1-2 lines)
-        train_op = tf.train.AdamOptimizer(learning_rate = self.config.lr).minimize(loss)
+        opt = tf.train.AdamOptimizer(learning_rate = self.config.lr, name = 'Adam')
+        train_op = opt.minimize(loss)
         ### END YOUR CODE
         return train_op
-    
+
     def preprocess_sequence_data(self, examples):
-        return examples
+        return make_windowed_data(examples, start=self.helper.START, end=self.helper.END, window_size=self.config.window_size)
+
+    def consolidate_predictions(self, examples_raw, examples, preds):
+        """Batch the predictions into groups of sentence length.
+        """
+        ret = []
+        #pdb.set_trace()
+        i = 0
+        for sentence, labels in examples_raw:
+            labels_ = preds[i:i+len(sentence)]
+            i += len(sentence)
+            ret.append([sentence, labels, labels_])
+        return ret
 
     def predict_on_batch(self, sess, inputs_batch):
         """Make predictions for the provided batch of data
@@ -264,7 +327,7 @@ class GlassdoorModel(NERModel):
         return loss
 
     def __init__(self, helper, config, pretrained_embeddings, report=None):
-        super(GlassdoorModel, self).__init__(helper, config, report)
+        super(WindowModel, self).__init__(helper, config, report)
         self.pretrained_embeddings = pretrained_embeddings
 
         # Defining placeholders.
@@ -274,6 +337,20 @@ class GlassdoorModel(NERModel):
 
         self.build()
 
+
+def test_make_windowed_data():
+    sentences = [[[1,1], [2,0], [3,3]]]
+    sentence_labels = [[1, 2, 3]]
+    data = zip(sentences, sentence_labels)
+    w_data = make_windowed_data(data, start=[5,0], end=[6,0], window_size=1)
+
+    assert len(w_data) == sum(len(sentence) for sentence in sentences)
+
+    assert w_data == [
+        ([5,0] + [1,1] + [2,0], 1,),
+        ([1,1] + [2,0] + [3,3], 2,),
+        ([2,0] + [3,3] + [6,0], 3,),
+        ]
 
 def do_test1(_):
     logger.info("Testing make_windowed_data")
@@ -303,57 +380,33 @@ def do_test2(args):
     logger.info("Model did not crash!")
     logger.info("Passed!")
 
-
-
-### Helper function that loads a list from a pickle file
-def load_pickle(filename):
-  with open(filename, 'rb') as f:
-    data = pickle.load(f)
-  return data
-
-
 def do_train(args):
     # Set up some parameters.
     config = Config()
-    # helper, train, dev, train_raw, dev_raw = load_and_preprocess_data(args) -- REPLACE THIS FUNCTION!
-    ## REPLACEMENT
-    helper = load_pickle('data/helper.pickle') # created by words_to_vecs.py
-    data = load_pickle('data/test_data.pickle') # created by words_to_vecs.py
-    train = data[0:15000]
-    dev = data[15000:]
-    # embeddings = load_embeddings(args, helper) -- REPLACE THIS FUNCTION
-    embeddings = range(0,10000)
-    ## REPLACEMENT
-    # - Skip for first test
+    helper, train, dev, train_raw, dev_raw = load_and_preprocess_data(args)
+    embeddings = load_embeddings(args, helper)
+    config.embed_size = embeddings.shape[1]
+    helper.save(config.output_path)
 
-    # config.embed_size = embeddings.shape[1] 
-    config.embed_size = 1  # FOR AN INITIAL TEST RUN JUST SET THE EMBEDDING SIZE TO 1 (i.e. just use the integer vectors that are passed in)
-    
-    # helper.save(config.output_path)
-
-    # handler = logging.FileHandler(config.log_output)
-    # handler.setLevel(logging.DEBUG)
-    # handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s: %(message)s'))
-    # logging.getLogger().addHandler(handler)
+    handler = logging.FileHandler(config.log_output)
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s: %(message)s'))
+    logging.getLogger().addHandler(handler)
 
     report = None #Report(Config.eval_output)
-
 
     with tf.Graph().as_default():
         logger.info("Building model...",)
         start = time.time()
-        model = GlassdoorModel(helper, config, embeddings)
+        model = WindowModel(helper, config, embeddings)
         logger.info("took %.2f seconds", time.time() - start)
+
         init = tf.global_variables_initializer()
         saver = tf.train.Saver()
 
         with tf.Session() as session:
             session.run(init)
-            
             model.fit(session, saver, train, dev)
-
-            code.interact(local=locals())
-            
             if report:
                 report.log_output(model.output(session, dev_raw))
                 report.save()
@@ -380,7 +433,7 @@ def do_evaluate(args):
     with tf.Graph().as_default():
         logger.info("Building model...",)
         start = time.time()
-        model = GlassdoorModel(helper, config, embeddings)
+        model = WindowModel(helper, config, embeddings)
 
         logger.info("took %.2f seconds", time.time() - start)
 
@@ -403,7 +456,7 @@ def do_shell(args):
     with tf.Graph().as_default():
         logger.info("Building model...",)
         start = time.time()
-        model = GlassdoorModel(helper, config, embeddings)
+        model = WindowModel(helper, config, embeddings)
         logger.info("took %.2f seconds", time.time() - start)
 
         init = tf.global_variables_initializer()
@@ -434,15 +487,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Trains and tests an NER model')
     subparsers = parser.add_subparsers()
 
-    # command_parser = subparsers.add_parser('test1', help='')
-    # command_parser.set_defaults(func=do_test1)
+    command_parser = subparsers.add_parser('test1', help='')
+    command_parser.set_defaults(func=do_test1)
 
-    # command_parser = subparsers.add_parser('test2', help='')
-    # command_parser.add_argument('-dt', '--data-train', type=argparse.FileType('r'), default="data/tiny.conll", help="Training data")
-    # command_parser.add_argument('-dd', '--data-dev', type=argparse.FileType('r'), default="data/tiny.conll", help="Dev data")
-    # command_parser.add_argument('-v', '--vocab', type=argparse.FileType('r'), default="data/vocab.txt", help="Path to vocabulary file")
-    # command_parser.add_argument('-vv', '--vectors', type=argparse.FileType('r'), default="data/wordVectors.txt", help="Path to word vectors file")
-    # command_parser.set_defaults(func=do_test2)
+    command_parser = subparsers.add_parser('test2', help='')
+    command_parser.add_argument('-dt', '--data-train', type=argparse.FileType('r'), default="data/tiny.conll", help="Training data")
+    command_parser.add_argument('-dd', '--data-dev', type=argparse.FileType('r'), default="data/tiny.conll", help="Dev data")
+    command_parser.add_argument('-v', '--vocab', type=argparse.FileType('r'), default="data/vocab.txt", help="Path to vocabulary file")
+    command_parser.add_argument('-vv', '--vectors', type=argparse.FileType('r'), default="data/wordVectors.txt", help="Path to word vectors file")
+    command_parser.set_defaults(func=do_test2)
 
     command_parser = subparsers.add_parser('train', help='')
     # command_parser.add_argument('-dt', '--data-train', type=argparse.FileType('r'), default="data/train.conll", help="Training data")
