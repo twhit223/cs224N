@@ -7,13 +7,13 @@ Common definitions for NER
 from util import one_hot
 
 LBLS = [
-    "PER",
-    "ORG",
-    "LOC",
-    "MISC",
-    "O",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
     ]
-NONE = "O"
+NONE = "1"
 LMAP = {k: one_hot(5,i) for i, k in enumerate(LBLS)}
 NUM = "NNNUMMM"
 UNK = "UUUNKKK"

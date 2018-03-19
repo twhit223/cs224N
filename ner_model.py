@@ -53,21 +53,32 @@ class NERModel(Model):
         Args:
             sess: the current TensorFlow session.
             examples: A list of vectorized input/output pairs.
-            examples: A list of the original input/output sequence pairs.
+            examples_raw: A list of the original input/output sequence pairs.
         Returns:
             The F1 score for predicting tokens as named entities.
         """
+        
         token_cm = ConfusionMatrix(labels=LBLS)
 
         correct_preds, total_correct, total_preds = 0., 0., 0.
         for _, labels, labels_  in self.output(sess, examples_raw, examples):
-            for l, l_ in zip(labels, labels_):
-                token_cm.update(l, l_)
-            gold = set(get_chunks(labels))
-            pred = set(get_chunks(labels_))
-            correct_preds += len(gold.intersection(pred))
-            total_preds += len(pred)
-            total_correct += len(gold)
+            # OLD CODE:
+            # for l, l_ in zip(labels, labels_):
+            #     token_cm.update(l, l_)
+            # NEW CODE:
+            token_cm.update(labels, labels_) 
+            # OLD CODE:
+            # gold = set(get_chunks(labels))
+            # pred = set(get_chunks(labels_))
+            # correct_preds += len(gold.intersection(pred))
+            # total_preds += len(pred)
+            # total_correct += len(gold)
+            # NEW CODE:
+            if labels == labels_: 
+                correct_preds += 1
+                total_correct += 1
+            total_preds += 1
+
 
         p = correct_preds / total_preds if correct_preds > 0 else 0
         r = correct_preds / total_correct if correct_preds > 0 else 0
@@ -90,6 +101,7 @@ class NERModel(Model):
             preds_ = self.predict_on_batch(sess, *batch)
             preds += list(preds_)
             prog.update(i + 1, [])
+
         return self.consolidate_predictions(inputs_raw, inputs, preds)
 
     def fit(self, sess, saver, train_examples_raw, dev_set_raw):
@@ -97,8 +109,6 @@ class NERModel(Model):
 
         train_examples = self.preprocess_sequence_data(train_examples_raw)
         dev_set = self.preprocess_sequence_data(dev_set_raw)
-
-        code.interact(local = locals())
 
         for epoch in range(self.config.n_epochs):
             logger.info("Epoch %d out of %d", epoch + 1, self.config.n_epochs)
@@ -115,7 +125,6 @@ class NERModel(Model):
             ### YOUR CODE HERE (2-3 lines)
             mini_batch = minibatches(train_examples, self.config.batch_size)
             for m in mini_batch:
-                code.interact(local = locals())
                 self.train_on_batch(sess, *m)
             ### END YOUR CODE
 
@@ -123,15 +132,18 @@ class NERModel(Model):
             token_cm, entity_scores = self.evaluate(sess, dev_set, dev_set_raw)
             logger.debug("Token-level confusion matrix:\n" + token_cm.as_table())
             logger.debug("Token-level scores:\n" + token_cm.summary())
-            logger.info("Entity level P/R/F1: %.2f/%.2f/%.2f", *entity_scores)
-
-            score = entity_scores[-1]
+            ## OLD CODE
+            # logger.info("Entity level P/R/F1: %.2f/%.2f/%.2f", *entity_scores)
+            # score = entity_scores[-1]
+            ## NEW CODE
+            # Use the micro-level F1 score as the best score
+            score = token_cm.micro_f1
             
             if score > best_score:
                 best_score = score
                 if saver:
                     logger.info("New best score! Saving model in %s", self.config.model_output)
-                    saver.save(sess, self.config.model_output)
+                    # saver.save(sess, self.config.model_output)
             print("")
             if self.report:
                 self.report.log_epoch()

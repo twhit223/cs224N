@@ -15,6 +15,7 @@ import StringIO
 from collections import defaultdict, Counter, OrderedDict
 import numpy as np
 from numpy import array, zeros, allclose
+import code
 
 logger = logging.getLogger("hw3")
 logger.setLevel(logging.DEBUG)
@@ -205,6 +206,9 @@ class ConfusionMatrix(object):
         self.labels = labels
         self.default_label = default_label if default_label is not None else len(labels) -1
         self.counts = defaultdict(Counter)
+        ## NEW CODE: Add the micro and macro f1 to access when determining the best models. 
+        self.micro_f1 = 0
+        self.macro_f1 = 0
 
     def update(self, gold, guess):
         """Update counts"""
@@ -249,8 +253,10 @@ class ConfusionMatrix(object):
         rec = (tp)/(tp + fn) if tp > 0  else 0
         f1 = 2 * prec * rec / (prec + rec) if tp > 0  else 0
         data.append([acc, prec, rec, f1])
+        self.micro_f1 = f1
         # Macro average
         data.append(macro / len(keys))
+        self.macro_f1 = macro[-1]/len(keys)
 
         # default average
         tp, fp, tn, fn = default
@@ -261,7 +267,8 @@ class ConfusionMatrix(object):
         data.append([acc, prec, rec, f1])
 
         # Macro and micro average.
-        return to_table(data, self.labels + ["micro","macro","not-O"], ["label", "acc", "prec", "rec", "f1"])
+        # return to_table(data, self.labels + ["micro","macro","not-O"], ["label", "acc", "prec", "rec", "f1"])
+        return to_table(data, self.labels + ["micro","macro"] , ["label", "acc", "prec", "rec", "f1"])
 
 class Progbar(object):
     """

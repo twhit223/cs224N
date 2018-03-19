@@ -93,7 +93,7 @@ def save_as_pickle_py2(data, filename):
 ### Helper function that loads a list from a pickle file
 def load_pickle(filename):
   with open(filename, 'rb') as f:
-    data = pickle.load(data, f)
+    data = pickle.load(f)
   return data
 
 
@@ -130,7 +130,7 @@ def one_hot_encode(all_words, revs, num_words, scores):
   revs_int_encoded = [[dictionary[word] if word in dictionary else dictionary['UUUNKKK'] for word in rev] + [dictionary['PAAAAAD']]*(2*len_revs-len(rev)) for rev in revs]
   output = []
   for i in range(0,len(scores)):
-    output.append((revs_int_encoded[i], scores[i]))
+    output.append((revs_int_encoded[i][0:MAX_DOCUMENT_LENGTH], scores[i]-1))
 
   # # Create the one-hot vectors from the integer vectors
   # print("One-hot encoding reviews...")
@@ -152,24 +152,25 @@ def one_hot_encode(all_words, revs, num_words, scores):
 
 
 ### Convert the reviews to word2vec bag of words vectors
-def word2vec_embed(word2int_dict, word2int_reversed_dict):
-
-  model = gensim.models.Word2Vec.load_word2vec_format('data/GoogleNews-vectors-negative300.bin', binary=True)
+def word2vec_encode(word2int_dict, word2int_reversed_dict):
+  print("Encoding word2vec embeddings...")
+  model = gensim.models.KeyedVectors.load_word2vec_format('data/GoogleNews-vectors-negative300.bin', binary=True)
   vocab_size = len(word2int_reversed_dict)
   embed_size = 300
-  embeddings = np.zeroes((vocab_size, embed_size))
+  embeddings = np.zeros((vocab_size, embed_size), dtype = np.float32)
   for k,v in word2int_dict.items():
     if k == 'PAAAAAD':
       embeddings[v] = [0.0]*embed_size
-    elif k == 'UUUNKKK':
-      embeddings[v] = [0.00000001]*embed_size
-    else:
+    elif k.strip() in model:
       embeddings[v] = model[k]
+    else:
+      # Encode the unkown vectors
+      embeddings[v] = [0.00000001]*embed_size
 
   # zero = np.zeros(300)
   # revs_word2vec_encoded = [[model[word] if word in model.wv.vocab else zero for word in rev] for rev in revs]
 
-  return word2vec_embedding
+  return embeddings
 
 
 ### Convert the reviews to GloVe vectors
@@ -190,44 +191,64 @@ def glove_encode(word2int_dict, word2int_reversed_dict):
   model = load_glove_model('data/glove.42B.300d.txt')
   vocab_size = len(word2int_reversed_dict)
   embed_size = 300
-  embeddings = np.zeroes((vocab_size, embed_size))
+  embeddings = np.zeros((vocab_size, embed_size), dtype = np.float32)
   for k,v in word2int_dict.items():
     if k == 'PAAAAAD':
       embeddings[v] = [0.0]*embed_size
-    elif k == 'UUUNKKK':
-      embeddings[v] = [0.00000001]*embed_size
-    else:
+    elif k.strip() in model:
       embeddings[v] = model[k]
+    else:
+      # Encode the unkown vectors
+      embeddings[v] = [0.00000001]*embed_size
 
   # zero = np.zeros(100)
   # revs_glove_encoded = [[model[word] if word in model else zero for word in rev] for rev in revs]
 
   return embeddings
 
-# ### Convert the words to CoVe vectors
-# def cove_encode(revs_glove_encoded):
+### Convert the words to CoVe vectors. Cannot do this in tensorflow because cove loads from keras and requires the whole sentence
+def cove_encode(revs_int_encoded, glove_embedding):
 
-#   cove_model = load_model('Keras_CoVe.h5')
-#   # Pass each review into the glove model
-#   revs_cove_encoded = np.array()
-#   code.interact(local = locals())
-#   for rev in revs_glove_encoded:
-#     rev_reshaped = np.reshape(rev, (1, len(rev), 300))
-#     revs_cove_encoded.append(cove_model.predict(rev))
+  print("Encoding reviews with CoVe...")
+  # Get the reviews and scores for each area of the input
+  revs = [rev[0] for rev in revs_int_encoded]
+  scores = [rev[1] for rev in revs_int_encoded]
+  revs_glove_encoded = [[glove_embedding[num] for num in rev] for rev in revs]
 
-#   return revs_cove_encoded
+  # Convert to a numpy array to pass into the glove encoder
+  revs_glove_encoded = np.array(revs_glove_encoded)
+
+  # Load the model and convert the reviews
+  print("Loading CoVe model...")
+  model = load_model('Keras_CoVe.h5')
+  print("Encoding reviews...")
+  revs_cove_encoded = model.predict(revs_glove_encoded)
+  print("Appending scores...")
+  code.interact(local = locals())
+
+  # for rev in revs_glove_encoded:
+  #   rev_reshaped = np.reshape(rev, (1, len(rev), 300))
+  #   revs_cove_encoded.append(cove_model.predict(rev))
+
+  return revs_cove_encoded
 
 
-filename = 'reviews_control_private.txt'
-all_words, revs, scores = import_reviews(filename)
-output, word2int_dict, word2int_reversed_dict, inv_dict_list = one_hot_encode(all_words, revs, num_features, scores)
-helper = (word2int_dict, MAX_DOCUMENT_LENGTH)
-save_as_pickle_py2(helper, 'data/helper.pickle')
-save_as_pickle_py2(output, 'data/test_data.pickle')
+# filename = 'reviews_control_private.txt'
+# all_words, revs, scores = import_reviews(filename)
+# output, word2int_dict, word2int_reversed_dict, inv_dict_list = one_hot_encode(all_words, revs, num_features, scores)
+# helper = (word2int_dict, MAX_DOCUMENT_LENGTH)
+# save_as_pickle_py2(helper, 'data/test_helper.pickle')
+# save_as_pickle_py2(output, 'data/test_data.pickle')
+# save_as_pickle_py2(word2int_reversed_dict, 'data/test_word2int_reversed_dict.pickle')
 # revs_one_hot_encoded, revs_int_encoded, count, word2int_dict, word2int_reversed_dict, inv_dict_list = one_hot_encode(all_words, revs, num_features)
 # word2vec_embedding = word2vec_encode(word2int_dict, word2int_reversed_dict)
+# save_as_pickle_py2(word2vec_embedding, 'data/test_word2vec_embeddings.pickle')
 # glove_embedding = glove_encode(word2int_dict, word2int_reversed_dict)
-# revs_cove_encoded = cove_encode(revs_glove_encoded)
+# save_as_pickle_py2(glove_embedding, 'data/test_glove_embeddings.pickle')
+glove_embedding = load_pickle('data/test_glove_embeddings.pickle')
+output = load_pickle('data/test_data.pickle')
+revs_cove_encoded = cove_encode(output, glove_embedding)
+save_as_pickle_py2(revs_cove_encoded, 'data/test_cove_encoded_revs.pickle')
 code.interact(local = locals())
 ### THINK ABOUT HOW TO DEAL WITH A REVIEW OR LIST OF REVIEWS
 # Given a review: pros + cons

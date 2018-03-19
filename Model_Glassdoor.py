@@ -16,6 +16,7 @@ import pickle
 from datetime import datetime
 
 import tensorflow as tf
+import numpy as np
 
 from util import print_sentence, write_conll
 from data_util import load_and_preprocess_data, load_embeddings, read_conll, ModelHelper
@@ -44,12 +45,14 @@ class Config:
     ### END YOUR CODE
     n_classes = 5
     dropout = 0.5
-    embed_size = 50
+    embed_size = 300
     hidden_size1 = 200
     hidden_size2 = 200
     batch_size = 2048
     n_epochs = 10
     lr = 0.001
+    # Add an embedding selection: 0 - int encoding, 1 - word2vec, 2 - glove, 3 - cove
+    embed_type = 2
 
     def __init__(self, output_path=None):
         if output_path:
@@ -94,7 +97,7 @@ class GlassdoorModel(NERModel):
         (Don't change the variable names)
         """
         ### YOUR CODE HERE (~3-5 lines)
-        self.input_placeholder = tf.placeholder(shape = (None, self.config.n_rev_features), dtype = tf.float32)
+        self.input_placeholder = tf.placeholder(shape = (None, self.config.n_rev_features), dtype = tf.int32)
         self.labels_placeholder = tf.placeholder(shape = (None,), dtype = tf.int32)
         self.dropout_placeholder = tf.placeholder(dtype = tf.float32)
         ### END YOUR CODE
@@ -145,11 +148,13 @@ class GlassdoorModel(NERModel):
         """
         ### I THINK THIS IS WHERE YOUR STUFF GOES TYLER; YOUR EMBEDDING FOR THE DIFFERENT CASES
 
+        # # For testing with just the integer encoding
+        # embeddings = self.input_placeholder 
 
-        #embeddings = tf.Variable(self.pretrained_embeddings)
-        #embeddings = tf.nn.embedding_lookup(embeddings, self.input_placeholder)
-        #embeddings = tf.reshape(embeddings, [-1, self.config.n_window_features * self.config.embed_size]) 
-        embeddings = self.input_placeholder 
+        # Standard embeddings
+        embeddings = tf.get_variable(name = "embed", initializer = self.pretrained_embeddings)
+        embeddings = tf.nn.embedding_lookup(embeddings, self.input_placeholder)
+        embeddings = tf.reshape(embeddings, [-1, self.config.rev_length* self.config.embed_size]) 
                                                                                                       
         ### END YOUR CODE
         return embeddings
@@ -182,18 +187,30 @@ class GlassdoorModel(NERModel):
         dropout_rate = self.dropout_placeholder
         ### YOUR CODE HERE (~10-20 lines)
 
+        ## 1 RELU
         b1 = tf.Variable(tf.zeros((self.config.hidden_size1,)))
-        b2 = tf.Variable(tf.zeros((self.config.hidden_size2,)))
         b3 = tf.Variable(tf.zeros((self.config.n_classes,)))
         W1 = tf.get_variable("W1", shape = (self.config.n_rev_features * self.config.embed_size, self.config.hidden_size1), initializer = tf.contrib.layers.xavier_initializer())
-        W2 = tf.get_variable("W2", shape = (self.config.hidden_size1, self.config.hidden_size2), initializer = tf.contrib.layers.xavier_initializer())
-        W3 = tf.get_variable("W3", shape = (self.config.hidden_size2, self.config.n_classes), initializer = tf.contrib.layers.xavier_initializer())
+        W3 = tf.get_variable("W3", shape = (self.config.hidden_size1, self.config.n_classes), initializer = tf.contrib.layers.xavier_initializer())
 
         z1 = tf.nn.relu(tf.matmul(x, W1) + b1)
-        z1_drop = tf.nn.dropout(z1, dropout_rate)
-        z2 = tf.nn.relu(tf.matmul(z1_drop, W2) + b2)
-        z2_drop = tf.nn.dropout(z2, dropout_rate)
-        pred = tf.matmul(z2_drop, W3) + b3
+        z1_drop  = z1
+        # z1_drop = tf.nn.dropout(z1, dropout_rate)
+        pred = tf.matmul(z1_drop, W3) + b3
+
+        # ## 2 RELU
+        # b1 = tf.Variable(tf.zeros((self.config.hidden_size1,)))
+        # b2 = tf.Variable(tf.zeros((self.config.hidden_size2,)))
+        # b3 = tf.Variable(tf.zeros((self.config.n_classes,)))
+        # W1 = tf.get_variable("W1", shape = (self.config.n_rev_features * self.config.embed_size, self.config.hidden_size1), initializer = tf.contrib.layers.xavier_initializer())
+        # W2 = tf.get_variable("W2", shape = (self.config.hidden_size1, self.config.hidden_size2), initializer = tf.contrib.layers.xavier_initializer())
+        # W3 = tf.get_variable("W3", shape = (self.config.hidden_size2, self.config.n_classes), initializer = tf.contrib.layers.xavier_initializer())
+
+        # z1 = tf.nn.relu(tf.matmul(x, W1) + b1)
+        # z1_drop = tf.nn.dropout(z1, dropout_rate)
+        # z2 = tf.nn.relu(tf.matmul(z1_drop, W2) + b2)
+        # z2_drop = tf.nn.dropout(z2, dropout_rate)
+        # pred = tf.matmul(z2_drop, W3) + b3
 
         ### END YOUR CODE
         return pred
@@ -243,6 +260,25 @@ class GlassdoorModel(NERModel):
     
     def preprocess_sequence_data(self, examples):
         return examples
+
+    def consolidate_predictions(self, examples_raw, examples, preds):
+        """Batch the predictions into groups of sentence length.
+        """
+        ret = []
+        # #pdb.set_trace()
+        # i = 0
+        # for sentence, labels in examples_raw:
+        #     labels_ = preds[i:i+len(sentence)]
+        #     i += len(sentence)
+        #     ret.append([sentence, labels, labels_])
+        ## NEW CODE
+        i = 0
+        for sentence, label in examples_raw:
+            label_ = preds[i]
+            i += 1
+            ret.append([sentence, label, label_])
+
+        return ret
 
     def predict_on_batch(self, sess, inputs_batch):
         """Make predictions for the provided batch of data
@@ -317,17 +353,34 @@ def do_train(args):
     config = Config()
     # helper, train, dev, train_raw, dev_raw = load_and_preprocess_data(args) -- REPLACE THIS FUNCTION!
     ## REPLACEMENT
-    helper = load_pickle('data/helper.pickle') # created by words_to_vecs.py
+    helper = load_pickle('data/test_helper.pickle') # created by words_to_vecs.py
     data = load_pickle('data/test_data.pickle') # created by words_to_vecs.py
-    train = data[0:15000]
-    dev = data[15000:]
+    cutoff = int(3*len(data)/4)
+    # code.interact(local = locals())
+    train = data[0:cutoff]
+    train_raw = train
+    dev = data[cutoff:]
+    dev_raw = dev
     # embeddings = load_embeddings(args, helper) -- REPLACE THIS FUNCTION
-    embeddings = range(0,10000)
+    if config.embed_type == 0:
+        embeddings = range(0,10000)
+    elif config.embed_type == 1:
+        embeddings = load_pickle('data/test_word2vec_embeddings.pickle')
+        embeddings = embeddings.astype(np.float32)
+    elif config.embed_type == 2:
+        embeddings = load_pickle('data/test_glove_embeddings.pickle')
+    elif config.embed_type == 3:
+        embeddings = load_pickle('data/test_cove_embeddings.pickle')
+    else:
+        print("Invaid embedding type:", config.embed_type, ". Debugging...")
+        code.interact(local = locals())
+
     ## REPLACEMENT
     # - Skip for first test
-
-    # config.embed_size = embeddings.shape[1] 
-    config.embed_size = 1  # FOR AN INITIAL TEST RUN JUST SET THE EMBEDDING SIZE TO 1 (i.e. just use the integer vectors that are passed in)
+    if config.embed_type == 0:
+        config.embed_size = 1  # FOR AN INITIAL TEST RUN JUST SET THE EMBEDDING SIZE TO 1 (i.e. just use the integer vectors that are passed in)
+    else:
+        config.embed_size = embeddings.shape[1] 
     
     # helper.save(config.output_path)
 
@@ -363,6 +416,9 @@ def do_train(args):
                 sentences, labels, predictions = zip(*output)
                 predictions = [[LBLS[l] for l in preds] for preds in predictions]
                 output = zip(sentences, labels, predictions)
+
+                print("Saving predictions to file...")
+                code.interact(local = locals())
 
                 with open(model.config.conll_output, 'w') as f:
                     write_conll(f, output)
