@@ -48,7 +48,7 @@ def import_reviews(filename):
     # Get the categories
     if rev == '':
       continue
-    rev = rev.split('||')
+    rev = rev.split('|~|')
     pro = rev[0]
     con = rev[1]
     # adv = rev[2]
@@ -232,23 +232,41 @@ def cove_encode(revs_int_encoded, glove_embedding):
 
   return revs_cove_encoded
 
+# Convert the reviews to be integer encoded
+filename = 'reviews_all_public.txt'
+all_words, revs, scores = import_reviews(filename)
+code.interact(local = locals())
+output, word2int_dict, word2int_reversed_dict, inv_dict_list = one_hot_encode(all_words, revs, num_features, scores)
+helper = (word2int_dict, MAX_DOCUMENT_LENGTH)
+save_as_pickle_py2(helper, 'data/test_helper.pickle')
+save_as_pickle_py2(word2int_reversed_dict, 'data/test_word2int_reversed_dict.pickle')
 
-# filename = 'reviews_control_private.txt'
-# all_words, revs, scores = import_reviews(filename)
-# output, word2int_dict, word2int_reversed_dict, inv_dict_list = one_hot_encode(all_words, revs, num_features, scores)
-# helper = (word2int_dict, MAX_DOCUMENT_LENGTH)
-# save_as_pickle_py2(helper, 'data/test_helper.pickle')
-# save_as_pickle_py2(output, 'data/test_data.pickle')
-# save_as_pickle_py2(word2int_reversed_dict, 'data/test_word2int_reversed_dict.pickle')
-# revs_one_hot_encoded, revs_int_encoded, count, word2int_dict, word2int_reversed_dict, inv_dict_list = one_hot_encode(all_words, revs, num_features)
-# word2vec_embedding = word2vec_encode(word2int_dict, word2int_reversed_dict)
-# save_as_pickle_py2(word2vec_embedding, 'data/test_word2vec_embeddings.pickle')
-# glove_embedding = glove_encode(word2int_dict, word2int_reversed_dict)
-# save_as_pickle_py2(glove_embedding, 'data/test_glove_embeddings.pickle')
-glove_embedding = load_pickle('data/test_glove_embeddings.pickle')
-output = load_pickle('data/test_data.pickle')
-revs_cove_encoded = cove_encode(output, glove_embedding)
-save_as_pickle_py2(revs_cove_encoded, 'data/test_cove_encoded_revs.pickle')
+# Split the output into train + dev, and test sets
+print('Saving reviews...')
+cutoff_dev = int(len(output)* 0.8)
+cutoff_test = int(len(output) * 0.9)
+train_set = output[0:cutoff_dev]
+dev_set = output[cutoff_dev:cutoff_test]
+test_set = output[cutoff_test:]
+save_as_pickle_py2(output, 'data/public_companies_train_data.pickle')
+save_as_pickle_py2(output, 'data/public_companies_dev_data.pickle')
+save_as_pickle_py2(output, 'data/public_companies_test_data.pickle')
+print('Saved all reviews...')
+code.interact(local = locals())
+
+# Get the word2vec embedding of the integer reviews
+word2vec_embedding = word2vec_encode(word2int_dict, word2int_reversed_dict)
+save_as_pickle_py2(word2vec_embedding, 'data/public_companies_word2vec_embeddings.pickle')
+
+# Get the GloVe embedding of the integer reviews
+glove_embedding = glove_encode(word2int_dict, word2int_reversed_dict)
+save_as_pickle_py2(glove_embedding, 'data/public_companies_glove_embeddings.pickle')
+
+# # Get the CoVe embedding reviews 
+# glove_embedding = load_pickle('data/test_glove_embeddings.pickle')
+# output = load_pickle('data/test_data.pickle')
+# revs_cove_encoded = cove_encode(output, glove_embedding)
+# save_as_pickle_py2(revs_cove_encoded, 'data/test_cove_encoded_revs.pickle')
 code.interact(local = locals())
 ### THINK ABOUT HOW TO DEAL WITH A REVIEW OR LIST OF REVIEWS
 # Given a review: pros + cons

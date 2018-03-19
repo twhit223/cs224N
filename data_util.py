@@ -68,8 +68,8 @@ class ModelHelper(object):
     """
     def __init__(self, tok2id, max_length):
         self.tok2id = tok2id
-        self.START = [tok2id[START_TOKEN], tok2id[P_CASE + "aa"]]
-        self.END = [tok2id[END_TOKEN], tok2id[P_CASE + "aa"]]
+        # self.START = [tok2id[START_TOKEN], tok2id[P_CASE + "aa"]]
+        # self.END = [tok2id[END_TOKEN], tok2id[P_CASE + "aa"]]
         self.max_length = max_length
 
     def vectorize_example(self, sentence, labels=None):
@@ -101,9 +101,9 @@ class ModelHelper(object):
         # Make sure the directory exists.
         if not os.path.exists(path):
             os.makedirs(path)
-        # Save the tok2id map.
-        with open(os.path.join(path, "features.pkl"), "w") as f:
-            pickle.dump([self.tok2id, self.max_length], f)
+        # # Save the tok2id map.
+        # with open(os.path.join(path, "features.pkl"), "w") as f:
+        #     pickle.dump([self.tok2id, self.max_length], f)
 
     @classmethod
     def load(cls, path):

@@ -13,6 +13,7 @@ import time
 import code
 import logging
 import pickle
+import os
 from datetime import datetime
 
 import tensorflow as tf
@@ -44,22 +45,24 @@ class Config:
     n_rev_features = n_word_features * rev_length # The total number of features used for each window.
     ### END YOUR CODE
     n_classes = 5
-    dropout = 0.5
+    dropout = 0.9
     embed_size = 300
     hidden_size1 = 200
     hidden_size2 = 200
     batch_size = 2048
-    n_epochs = 10
+    n_epochs = 30
     lr = 0.001
     # Add an embedding selection: 0 - int encoding, 1 - word2vec, 2 - glove, 3 - cove
-    embed_type = 2
+    embed_type = 1
+    # Add an architecture toggle: 1 - 1 ReLU, 2 - 2 ReLUs
+    architecture = 1
 
     def __init__(self, output_path=None):
         if output_path:
             # Where to save things.
             self.output_path = output_path
         else:
-            self.output_path = "results/glassdoor/{:%Y%m%d_%H%M%S}/".format(datetime.now())
+            self.output_path = "results/glassdoor/"+ "embed_type_"+ str(self.embed_type) + "/relu"+ str(self.architecture) + "/"
         self.model_output = self.output_path + "model.weights"
         self.eval_output = self.output_path + "results.txt"
         self.log_output = self.output_path + "log"
@@ -186,31 +189,38 @@ class GlassdoorModel(NERModel):
         x = self.add_embedding()
         dropout_rate = self.dropout_placeholder
         ### YOUR CODE HERE (~10-20 lines)
+        if self.config.architecture == 1:
 
-        ## 1 RELU
-        b1 = tf.Variable(tf.zeros((self.config.hidden_size1,)))
-        b3 = tf.Variable(tf.zeros((self.config.n_classes,)))
-        W1 = tf.get_variable("W1", shape = (self.config.n_rev_features * self.config.embed_size, self.config.hidden_size1), initializer = tf.contrib.layers.xavier_initializer())
-        W3 = tf.get_variable("W3", shape = (self.config.hidden_size1, self.config.n_classes), initializer = tf.contrib.layers.xavier_initializer())
+            ## 1 RELU
+            b1 = tf.Variable(tf.zeros((self.config.hidden_size1,)))
+            b3 = tf.Variable(tf.zeros((self.config.n_classes,)))
+            W1 = tf.get_variable("W1", shape = (self.config.n_rev_features * self.config.embed_size, self.config.hidden_size1), initializer = tf.contrib.layers.xavier_initializer())
+            W3 = tf.get_variable("W3", shape = (self.config.hidden_size1, self.config.n_classes), initializer = tf.contrib.layers.xavier_initializer())
 
-        z1 = tf.nn.relu(tf.matmul(x, W1) + b1)
-        z1_drop  = z1
-        # z1_drop = tf.nn.dropout(z1, dropout_rate)
-        pred = tf.matmul(z1_drop, W3) + b3
+            z1 = tf.nn.relu(tf.matmul(x, W1) + b1)
+            z1_drop  = z1
+            # z1_drop = tf.nn.dropout(z1, dropout_rate)
+            pred = tf.matmul(z1_drop, W3) + b3
 
-        # ## 2 RELU
-        # b1 = tf.Variable(tf.zeros((self.config.hidden_size1,)))
-        # b2 = tf.Variable(tf.zeros((self.config.hidden_size2,)))
-        # b3 = tf.Variable(tf.zeros((self.config.n_classes,)))
-        # W1 = tf.get_variable("W1", shape = (self.config.n_rev_features * self.config.embed_size, self.config.hidden_size1), initializer = tf.contrib.layers.xavier_initializer())
-        # W2 = tf.get_variable("W2", shape = (self.config.hidden_size1, self.config.hidden_size2), initializer = tf.contrib.layers.xavier_initializer())
-        # W3 = tf.get_variable("W3", shape = (self.config.hidden_size2, self.config.n_classes), initializer = tf.contrib.layers.xavier_initializer())
+        elif self.config.architecture == 2:
 
-        # z1 = tf.nn.relu(tf.matmul(x, W1) + b1)
-        # z1_drop = tf.nn.dropout(z1, dropout_rate)
-        # z2 = tf.nn.relu(tf.matmul(z1_drop, W2) + b2)
-        # z2_drop = tf.nn.dropout(z2, dropout_rate)
-        # pred = tf.matmul(z2_drop, W3) + b3
+            ## 2 RELU
+            b1 = tf.Variable(tf.zeros((self.config.hidden_size1,)))
+            b2 = tf.Variable(tf.zeros((self.config.hidden_size2,)))
+            b3 = tf.Variable(tf.zeros((self.config.n_classes,)))
+            W1 = tf.get_variable("W1", shape = (self.config.n_rev_features * self.config.embed_size, self.config.hidden_size1), initializer = tf.contrib.layers.xavier_initializer())
+            W2 = tf.get_variable("W2", shape = (self.config.hidden_size1, self.config.hidden_size2), initializer = tf.contrib.layers.xavier_initializer())
+            W3 = tf.get_variable("W3", shape = (self.config.hidden_size2, self.config.n_classes), initializer = tf.contrib.layers.xavier_initializer())
+
+            z1 = tf.nn.relu(tf.matmul(x, W1) + b1)
+            z1_drop = tf.nn.dropout(z1, dropout_rate)
+            z2 = tf.nn.relu(tf.matmul(z1_drop, W2) + b2)
+            z2_drop = tf.nn.dropout(z2, dropout_rate)
+            pred = tf.matmul(z2_drop, W3) + b3
+
+        else:
+            print("INVALID ARCHITECTURE SPECIFICATION! See Config class...")
+            exit()
 
         ### END YOUR CODE
         return pred
@@ -353,22 +363,40 @@ def do_train(args):
     config = Config()
     # helper, train, dev, train_raw, dev_raw = load_and_preprocess_data(args) -- REPLACE THIS FUNCTION!
     ## REPLACEMENT
-    helper = load_pickle('data/test_helper.pickle') # created by words_to_vecs.py
-    data = load_pickle('data/test_data.pickle') # created by words_to_vecs.py
-    cutoff = int(3*len(data)/4)
-    # code.interact(local = locals())
-    train = data[0:cutoff]
-    train_raw = train
-    dev = data[cutoff:]
-    dev_raw = dev
+    # Load the data
+    load_start = time.localtime()
+    print(str(load_start) + ": Loading data ...")
+
+    helper = load_pickle('data/py3_data/public_companies_helper.pickle') # created by words_to_vecs.py
+    helper = ModelHelper(helper, config.rev_length)
+
+    # # Used for testing toy models
+    # data = load_pickle('data/test_data.pickle') # created by words_to_vecs.py
+    # cutoff = int(3*len(data)/4)
+    # train = data[0:cutoff]
+    # train_raw = train
+    # dev = data[cutoff:]
+    # dev_raw = dev
+    
+    # Used for actual train/dev/test
+    train = load_pickle('data/py3_data/public_companies_train_data.pickle')
+    train = train[0:500000]
+    dev = load_pickle('data/py3_data/public_companies_dev_data.pickle')
+    cut = int(len(dev)/2)
+    dev = dev[0:cut]
+    # test = load_pickle('data/py3_data/public_companies_test_data.pickle')
+
+    load_end = time.localtime()
+    print(str(load_end) + ": Finished loading data ...")
+
     # embeddings = load_embeddings(args, helper) -- REPLACE THIS FUNCTION
     if config.embed_type == 0:
         embeddings = range(0,10000)
     elif config.embed_type == 1:
-        embeddings = load_pickle('data/test_word2vec_embeddings.pickle')
+        embeddings = load_pickle('data/py3_data/public_companies_word2vec_embeddings.pickle')
         embeddings = embeddings.astype(np.float32)
     elif config.embed_type == 2:
-        embeddings = load_pickle('data/test_glove_embeddings.pickle')
+        embeddings = load_pickle('data/py3_data/public_companies_glove_embeddings.pickle')
     elif config.embed_type == 3:
         embeddings = load_pickle('data/test_cove_embeddings.pickle')
     else:
@@ -381,8 +409,11 @@ def do_train(args):
         config.embed_size = 1  # FOR AN INITIAL TEST RUN JUST SET THE EMBEDDING SIZE TO 1 (i.e. just use the integer vectors that are passed in)
     else:
         config.embed_size = embeddings.shape[1] 
-    
+    # # OLD CODE
     # helper.save(config.output_path)
+    ## REPLACEMENT 
+    if not os.path.exists(config.output_path):
+        os.makedirs(config.output_path)
 
     # handler = logging.FileHandler(config.log_output)
     # handler.setLevel(logging.DEBUG)
@@ -404,27 +435,27 @@ def do_train(args):
             session.run(init)
             
             model.fit(session, saver, train, dev)
-
+            print("Model fit complete. No other code to run...")
             code.interact(local=locals())
             
-            if report:
-                report.log_output(model.output(session, dev_raw))
-                report.save()
-            else:
-                # Save predictions in a text file.
-                output = model.output(session, dev_raw)
-                sentences, labels, predictions = zip(*output)
-                predictions = [[LBLS[l] for l in preds] for preds in predictions]
-                output = zip(sentences, labels, predictions)
+            # if report:
+            #     report.log_output(model.output(session, dev_raw))
+            #     report.save()
+            # else:
+            #     # Save predictions in a text file.
+            #     output = model.output(session, dev_raw)
+            #     sentences, labels, predictions = zip(*output)
+            #     predictions = [[LBLS[l] for l in preds] for preds in predictions]
+            #     output = zip(sentences, labels, predictions)
 
-                print("Saving predictions to file...")
-                code.interact(local = locals())
+            #     print("Saving predictions to file...")
+            #     code.interact(local = locals())
 
-                with open(model.config.conll_output, 'w') as f:
-                    write_conll(f, output)
-                with open(model.config.eval_output, 'w') as f:
-                    for sentence, labels, predictions in output:
-                        print_sentence(f, sentence, labels, predictions)
+            #     with open(model.config.conll_output, 'w') as f:
+            #         write_conll(f, output)
+            #     with open(model.config.eval_output, 'w') as f:
+            #         for sentence, labels, predictions in output:
+            #             print_sentence(f, sentence, labels, predictions)
 
 def do_evaluate(args):
     config = Config(args.model_path)

@@ -137,13 +137,19 @@ class NERModel(Model):
             # score = entity_scores[-1]
             ## NEW CODE
             # Use the micro-level F1 score as the best score
-            score = token_cm.micro_f1
+            score = token_cm.macro_f1
             
+
             if score > best_score:
                 best_score = score
                 if saver:
                     logger.info("New best score! Saving model in %s", self.config.model_output)
-                    # saver.save(sess, self.config.model_output)
+                    saver.save(sess, self.config.model_output)
+                    # Write the confusion matrices to a text file
+                    cm_name = self.config.output_path + "confusion_matrix_" + "embed_type"+ str(self.config.embed_type) + "_relu" + str(self.config.architecture) + ".txt"
+                    with open (cm_name, 'w') as f:
+                        f.write("Token-level confusion matrix:\n" + token_cm.as_table())
+                        f.write("Token-level scores:\n" + token_cm.summary())
             print("")
             if self.report:
                 self.report.log_epoch()
