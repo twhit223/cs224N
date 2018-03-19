@@ -50,7 +50,7 @@ class Config:
     hidden_size1 = 200
     hidden_size2 = 200
     batch_size = 2048
-    n_epochs = 30
+    n_epochs = 10
     lr = 0.001
     # Add an embedding selection: 0 - int encoding, 1 - word2vec, 2 - glove, 3 - cove
     embed_type = 1
