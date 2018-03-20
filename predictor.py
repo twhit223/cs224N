@@ -34,7 +34,7 @@ class Predictor(object):
     self.saver = tf.train.Saver()
     self.saver.restore(self.sess, self.model.config.model_output)
 
-  def predict(self, data):
+  def predict(self, pros='', cons=''):
     """
     Get a model prediction from raw input
 
