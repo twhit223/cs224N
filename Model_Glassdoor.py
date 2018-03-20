@@ -53,7 +53,7 @@ class Config:
     n_epochs = 10
     lr = 0.001
     # Add an embedding selection: 0 - int encoding, 1 - word2vec, 2 - glove, 3 - cove
-    embed_type = 1
+    embed_type = 0
     # Add an architecture toggle: 1 - 1 ReLU, 2 - 2 ReLUs
     architecture = 1
 
@@ -155,8 +155,8 @@ class GlassdoorModel(NERModel):
         # embeddings = self.input_placeholder 
 
         # Standard embeddings
-        if embed_type == 0:
-            embeddings = self.input_placeholder
+        if self.config.embed_type == -1:
+            embeddings = tf.cast(self.input_placeholder, tf.float32)
         else:
             embeddings = tf.get_variable(name = "embed", initializer = self.pretrained_embeddings)
             embeddings = tf.nn.embedding_lookup(embeddings, self.input_placeholder)
@@ -386,13 +386,17 @@ def do_train(args):
     train_raw = train
     dev = data[cutoff:]
     dev_raw = dev
-    
+
     # # Used for actual train/dev/test
-    # train = load_pickle('data/py2_data/public_companies_train_data.pickle')
-    # train = train[0:50000]
-    # dev = load_pickle('data/py2_data/public_companies_dev_data.pickle')
+    # train = load_pickle('data/py3_data/public_companies_train_data.pickle')
+    # train = train[0:100000]
+    # dev = train[200000:210000]
+    # test = train[300000:310000]
+
+    # Old data
+    # dev = load_pickle('data/py3_data/public_companies_dev_data.pickle')
     # cut = int(len(dev)/2)
-    # dev = dev[0:10000]
+    # dev = dev[0:cut]
     # test = load_pickle('data/py3_data/public_companies_test_data.pickle')
 
     load_end = time.localtime()
@@ -400,7 +404,8 @@ def do_train(args):
 
     # embeddings = load_embeddings(args, helper) -- REPLACE THIS FUNCTION
     if config.embed_type == 0:
-        embeddings = range(0,10000)
+        # embeddings = range(0,10000)
+        embeddings = np.identity(10000, dtype = np.float32)
     elif config.embed_type == 1:
         embeddings = load_pickle('data/py2_data/public_companies_word2vec_embeddings.pickle')
         embeddings = embeddings.astype(np.float32)
@@ -414,7 +419,7 @@ def do_train(args):
 
     ## REPLACEMENT
     # - Skip for first test
-    if config.embed_type == 0:
+    if config.embed_type == -1:
         config.embed_size = 1  # FOR AN INITIAL TEST RUN JUST SET THE EMBEDDING SIZE TO 1 (i.e. just use the integer vectors that are passed in)
     else:
         config.embed_size = embeddings.shape[1] 
