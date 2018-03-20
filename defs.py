@@ -19,3 +19,6 @@ NUM = "NNNUMMM"
 UNK = "UUUNKKK"
 
 EMBED_SIZE = 50
+
+auth_header_name = 'Glassdoor-NLP-API-Token'
+auth_header_env = 'API_HEADER_TOKEN'
