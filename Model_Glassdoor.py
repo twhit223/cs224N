@@ -50,12 +50,12 @@ class Config:
     hidden_size1 = 200
     hidden_size2 = 200
     batch_size = 2048
-    n_epochs = 10
+    n_epochs = 50
     lr = 0.001
     # Add an embedding selection: 0 - int encoding, 1 - word2vec, 2 - glove, 3 - cove
-    embed_type = 1
+    embed_type = 2
     # Add an architecture toggle: 1 - 1 ReLU, 2 - 2 ReLUs
-    architecture = 1
+    architecture = 2
 
     def __init__(self, output_path=None):
         if output_path:
@@ -380,10 +380,12 @@ def do_train(args):
     
     # Used for actual train/dev/test
     train = load_pickle('data/py3_data/public_companies_train_data.pickle')
-    train = train[0:500000]
-    dev = load_pickle('data/py3_data/public_companies_dev_data.pickle')
-    cut = int(len(dev)/2)
-    dev = dev[0:cut]
+    train = train[0:100000]
+    dev = train[200000:210000]
+    test = train[300000:310000]
+    # dev = load_pickle('data/py3_data/public_companies_dev_data.pickle')
+    # cut = int(len(dev)/2)
+    # dev = dev[0:cut]
     # test = load_pickle('data/py3_data/public_companies_test_data.pickle')
 
     load_end = time.localtime()
