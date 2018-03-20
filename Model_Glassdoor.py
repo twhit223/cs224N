@@ -155,9 +155,12 @@ class GlassdoorModel(NERModel):
         # embeddings = self.input_placeholder 
 
         # Standard embeddings
-        embeddings = tf.get_variable(name = "embed", initializer = self.pretrained_embeddings)
-        embeddings = tf.nn.embedding_lookup(embeddings, self.input_placeholder)
-        embeddings = tf.reshape(embeddings, [-1, self.config.rev_length* self.config.embed_size]) 
+        if embed_type == 0:
+            embeddings = self.input_placeholder
+        else:
+            embeddings = tf.get_variable(name = "embed", initializer = self.pretrained_embeddings)
+            embeddings = tf.nn.embedding_lookup(embeddings, self.input_placeholder)
+            embeddings = tf.reshape(embeddings, [-1, self.config.rev_length* self.config.embed_size]) 
                                                                                                       
         ### END YOUR CODE
         return embeddings
@@ -239,6 +242,12 @@ class GlassdoorModel(NERModel):
             loss: A 0-d tensor (scalar)
         """
         ### YOUR CODE HERE (~2-5 lines)
+        # # Consider trying the l2_norm as a loss function instead so that further away predictions are penalized more
+        # preds = tf.argmax(pred)
+        # loss = tf.losses.mean_squared_error(labels = self.labels_placeholder, predictions = preds)
+        # loss = tf.reduce_mean(loss)
+
+        # Usual softmax cross entropy
         loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels = self.labels_placeholder, logits = pred)
         loss = tf.reduce_mean(loss)                          
         ### END YOUR CODE
@@ -367,23 +376,23 @@ def do_train(args):
     load_start = time.localtime()
     print(str(load_start) + ": Loading data ...")
 
-    helper = load_pickle('data/py3_data/public_companies_helper.pickle') # created by words_to_vecs.py
+    helper = load_pickle('data/py2_data/public_companies_helper.pickle') # created by words_to_vecs.py
     helper = ModelHelper(helper, config.rev_length)
 
-    # # Used for testing toy models
-    # data = load_pickle('data/test_data.pickle') # created by words_to_vecs.py
-    # cutoff = int(3*len(data)/4)
-    # train = data[0:cutoff]
-    # train_raw = train
-    # dev = data[cutoff:]
-    # dev_raw = dev
+    # Used for testing toy models
+    data = load_pickle('data/test_data.pickle') # created by words_to_vecs.py
+    cutoff = int(3*len(data)/4)
+    train = data[0:cutoff]
+    train_raw = train
+    dev = data[cutoff:]
+    dev_raw = dev
     
-    # Used for actual train/dev/test
-    train = load_pickle('data/py3_data/public_companies_train_data.pickle')
-    train = train[0:500000]
-    dev = load_pickle('data/py3_data/public_companies_dev_data.pickle')
-    cut = int(len(dev)/2)
-    dev = dev[0:cut]
+    # # Used for actual train/dev/test
+    # train = load_pickle('data/py2_data/public_companies_train_data.pickle')
+    # train = train[0:50000]
+    # dev = load_pickle('data/py2_data/public_companies_dev_data.pickle')
+    # cut = int(len(dev)/2)
+    # dev = dev[0:10000]
     # test = load_pickle('data/py3_data/public_companies_test_data.pickle')
 
     load_end = time.localtime()
@@ -393,10 +402,10 @@ def do_train(args):
     if config.embed_type == 0:
         embeddings = range(0,10000)
     elif config.embed_type == 1:
-        embeddings = load_pickle('data/py3_data/public_companies_word2vec_embeddings.pickle')
+        embeddings = load_pickle('data/py2_data/public_companies_word2vec_embeddings.pickle')
         embeddings = embeddings.astype(np.float32)
     elif config.embed_type == 2:
-        embeddings = load_pickle('data/py3_data/public_companies_glove_embeddings.pickle')
+        embeddings = load_pickle('data/py2_data/public_companies_glove_embeddings.pickle')
     elif config.embed_type == 3:
         embeddings = load_pickle('data/test_cove_embeddings.pickle')
     else:
