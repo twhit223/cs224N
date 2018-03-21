@@ -87,7 +87,7 @@ def flatten(seq,container=None):
 ### Helper function that saves a list a a pickle file
 def save_as_pickle_py2(data, filename):
   with open(filename, 'wb') as f:
-    pickle.dump(data, f, protocol = 2)
+    pickle.dump(data, f, protocol = 3)
   return
 
 ### Helper function that loads a list from a pickle file
@@ -232,93 +232,40 @@ def cove_encode(revs_int_encoded, glove_embedding):
 
   return revs_cove_encoded
 
-# Convert the reviews to be integer encoded
-filename = 'reviews_all_public.txt'
-all_words, revs, scores = import_reviews(filename)
-code.interact(local = locals())
-output, word2int_dict, word2int_reversed_dict, inv_dict_list = one_hot_encode(all_words, revs, num_features, scores)
-helper = (word2int_dict, MAX_DOCUMENT_LENGTH)
-save_as_pickle_py2(helper, 'data/test_helper.pickle')
-save_as_pickle_py2(word2int_reversed_dict, 'data/test_word2int_reversed_dict.pickle')
+# # Convert the reviews to be integer encoded
+# filename = 'reviews_all_public.txt'
+# all_words, revs, scores = import_reviews(filename)
+# code.interact(local = locals())
+# output, word2int_dict, word2int_reversed_dict, inv_dict_list = one_hot_encode(all_words, revs, num_features, scores)
+# helper = (word2int_dict, MAX_DOCUMENT_LENGTH)
+# save_as_pickle_py2(helper, 'data/test_helper.pickle')
+# save_as_pickle_py2(word2int_reversed_dict, 'data/test_word2int_reversed_dict.pickle')
 
-# Split the output into train + dev, and test sets
-print('Saving reviews...')
-cutoff_dev = int(len(output)* 0.8)
-cutoff_test = int(len(output) * 0.9)
-train_set = output[0:cutoff_dev]
-dev_set = output[cutoff_dev:cutoff_test]
-test_set = output[cutoff_test:]
-save_as_pickle_py2(output, 'data/public_companies_train_data.pickle')
-save_as_pickle_py2(output, 'data/public_companies_dev_data.pickle')
-save_as_pickle_py2(output, 'data/public_companies_test_data.pickle')
-print('Saved all reviews...')
-code.interact(local = locals())
+# # Split the output into train + dev, and test sets
+# print('Saving reviews...')
+# cutoff_dev = int(len(output)* 0.8)
+# cutoff_test = int(len(output) * 0.9)
+# train_set = output[0:cutoff_dev]
+# dev_set = output[cutoff_dev:cutoff_test]
+# test_set = output[cutoff_test:]
+# save_as_pickle_py2(output, 'data/public_companies_train_data.pickle')
+# save_as_pickle_py2(output, 'data/public_companies_dev_data.pickle')
+# save_as_pickle_py2(output, 'data/public_companies_test_data.pickle')
+# print('Saved all reviews...')
+# code.interact(local = locals())
 
-# Get the word2vec embedding of the integer reviews
-word2vec_embedding = word2vec_encode(word2int_dict, word2int_reversed_dict)
-save_as_pickle_py2(word2vec_embedding, 'data/public_companies_word2vec_embeddings.pickle')
+# # Get the word2vec embedding of the integer reviews
+# word2vec_embedding = word2vec_encode(word2int_dict, word2int_reversed_dict)
+# save_as_pickle_py2(word2vec_embedding, 'data/public_companies_word2vec_embeddings.pickle')
 
-# Get the GloVe embedding of the integer reviews
-glove_embedding = glove_encode(word2int_dict, word2int_reversed_dict)
-save_as_pickle_py2(glove_embedding, 'data/public_companies_glove_embeddings.pickle')
+# # Get the GloVe embedding of the integer reviews
+# glove_embedding = glove_encode(word2int_dict, word2int_reversed_dict)
+# save_as_pickle_py2(glove_embedding, 'data/public_companies_glove_embeddings.pickle')
 
-# # Get the CoVe embedding reviews 
+# # Get the CoVe embedding reviews  -- TAKES TOO LONG. CANNOT RUN
 # glove_embedding = load_pickle('data/test_glove_embeddings.pickle')
 # output = load_pickle('data/test_data.pickle')
 # revs_cove_encoded = cove_encode(output, glove_embedding)
 # save_as_pickle_py2(revs_cove_encoded, 'data/test_cove_encoded_revs.pickle')
-code.interact(local = locals())
-### THINK ABOUT HOW TO DEAL WITH A REVIEW OR LIST OF REVIEWS
-# Given a review: pros + cons
-# 1. Truncate pros and cons at len_revs and concatenate
-  # This is the given output of 'revs' from import_reviews() where each line is a single string with the pros + cons
-trevs = revs[0:2]
-print(trevs)
-# 2. Map the review to integers based on the vocabulary
-  # Here we should use tensorflow
-
-# # This is just a test, but it seems to be working
-# table = tf.contrib.lookup.index_table_from_tensor(
-#     mapping=inv_dict_list, num_oov_buckets=1, default_value=-1)
-# revs_to_map = tf.constant(trevs[0].split())
-# numbers = table.lookup(revs_to_map)
-# with tf.Session() as sess:
-#   tf.tables_initializer().run()
-#   print("{} --> {}".format(trevs[0], numbers.eval()))
-#   code.interact(local = locals())
-
-# This works. It takes the reviews, creates a tf.constant(), converts the strings to words, and pads the reviews to length of 200. 
-# The output is what we should be passing into the input placeholder
-def create_input(revs, inv_dict_list, score):
-
-  # Create a lookup table with the inv_dict_list. The default value is -1 which should be 'UUUNKKK'
-  table = tf.contrib.lookup.index_table_from_tensor(
-    mapping=inv_dict_list, num_oov_buckets=1, default_value=-1)
-
-  # Get the revs as a tf.constant() and convert them into their words
-  tf_revs = tf.constant(revs)
-  words = tf.string_split(tf_revs)
-
-  # Create a dense representation of the words and convert to ints
-  densewords = tf.sparse_tensor_to_dense(words, default_value = PADWORD)
-  words_as_ints = table.lookup(densewords)
-
-  # Pad the words_as_ints to MAX_DOCUMENT_LENGTH so that there is always a consistent length
-  padding = tf.constant([[0,0],[0,MAX_DOCUMENT_LENGTH]])
-  padded = tf.pad(words_as_ints, padding)
-  padded = tf.reshape(padded, [len(revs), MAX_DOCUMENT_LENGTH])
-
-
-  with tf.Session() as sess:
-    tf.tables_initializer().run()
-    code.interact(local = locals())
-
-  return padded
-
-
-int_input = create_input(revs, inv_dict_list)
-
-# 3. Do whatever embedding is selected (one-hot, word2vec, glove, cove)
-# 4. Do model shit... (Fabian)
 
 code.interact(local = locals())
