@@ -1,3 +1,4 @@
+import pickle
 from keras.models import load_model
 from keras.preprocessing.sequence import pad_sequences
 from keras.preprocessing.text import Tokenizer
@@ -7,19 +8,29 @@ class Predictor(object):
   """
   Interface used for recurrent predictions after a one-time load of a model
   """
+  model_path = 'fabian_model/model_glove_fulltrain_46accondev.h5'
+  reviews_path = 'fabian_model/py3_public_company_reviews_text.pickle'
+  max_len = 200
 
-  def __init__(self, model_path='', max_len=200):
+  def __init__(self):
     """
     :param str model_path: Path to model to serve prediction with
     """
-    self.model_path = model_path
-    self.max_len = max_len
-
     # Load model from disk
     self.model = load_model(self.model_path)
 
-    # Create a tokenizer
+    # Compile model
+    self.model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+    # Unpickle reviews
+    self.reviews = self.load_pkl(self.reviews_path)
+
     self.tokenizer = Tokenizer()
+    self.tokenizer.fit_on_texts(self.reviews)
+
+  def load_pkl(self, path):
+    with open(path, 'rb') as f:
+      return pickle.load(f)
 
   def prepro_input(self, input):
     """
@@ -28,7 +39,8 @@ class Predictor(object):
     (1) Convert text to sequence
     (2) Pad the sequence to max length
 
-    :param str input: Company review text (a pro or a con)
+    :param input: Company review text (a pro or a con) inside a list
+      :type: list(str) --> length 1
     :return: An encoded sequence of integers for this string
     :rtype: Sequence of integers
     """
@@ -47,16 +59,17 @@ class Predictor(object):
     :param str pros: Company review pros
     :param str cons: Company review cons
     :return: Predicted review score
-    :rtype: float
+    :rtype: int
     """
     # Just combine pros and cons
-    review = pros + cons
+    review = [' '.join((pros, cons))]
 
     # Preprocess the raw input
-    # TODO: input = self.prepro_input(review)
+    preprocessed_review = self.prepro_input(review)
 
-    # Get a prediction from the model
-    # TODO: score = self.model.predict([input])
-    score = 5.0
+    # Make prediction
+    result = self.model.predict(preprocessed_review)
 
-    return score
+    prediction = result.argmax(axis=-1)
+
+    return prediction
