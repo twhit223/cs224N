@@ -1,64 +1,62 @@
-import tensorflow as tf
-from data_util import load_embeddings
-from defs import LBLS
-from Model_Glassdoor import GlassdoorModel, Config, ModelHelper
-from util import read_conll
+from keras.models import load_model
+from keras.preprocessing.sequence import pad_sequences
+from keras.preprocessing.text import Tokenizer
 
 
 class Predictor(object):
   """
   Interface used for recurrent predictions after a one-time load of a model
   """
-  def __init__(self, model_path=''):
+
+  def __init__(self, model_path='', max_len=200):
+    """
+    :param str model_path: Path to model to serve prediction with
+    """
     self.model_path = model_path
+    self.max_len = max_len
 
-    # Create model helper from model_path
-    self.helper = ModelHelper.load(model_path)
+    # Load model from disk
+    self.model = load_model(self.model_path)
 
-    # Configure word embeddings
-    self.embedding_configs = EmbeddingConfigs()
-    self.embeddings = load_embeddings(self.embedding_configs, self.helper)
+    # Create a tokenizer
+    self.tokenizer = Tokenizer()
 
-    # Establish config info
-    self.config = Config(model_path)
-    self.config.embed_size = self.embeddings.shape[1]
+  def prepro_input(self, input):
+    """
+    Preprocess the raw text review input with the following steps:
 
-    # Create our model
-    self.model = GlassdoorModel(self.helper, self.config, self.embeddings)
+    (1) Convert text to sequence
+    (2) Pad the sequence to max length
 
-    # Create a new session and initialize globals
-    self.sess = tf.Session()
-    self.sess.run(tf.global_variables_initializer())
+    :param str input: Company review text (a pro or a con)
+    :return: An encoded sequence of integers for this string
+    :rtype: Sequence of integers
+    """
+    # Convert text --> sequence
+    encoded_input = self.tokenizer.texts_to_sequences(input)
 
-    # Create our saver and restore the model
-    self.saver = tf.train.Saver()
-    self.saver.restore(self.sess, self.model.config.model_output)
+    # Pad the encoded input to a max length
+    encoded_input = pad_sequences(encoded_input, maxlen=self.max_len, padding='post')
+
+    return encoded_input
 
   def predict(self, pros='', cons=''):
     """
-    Get a model prediction from raw input
+    Get a model prediction from raw input of pros/cons
 
-    :param list data: List of raw inputs to make predictions for
-    :return: Predictions and components for each
-    :rtype: list(dict)
+    :param str pros: Company review pros
+    :param str cons: Company review cons
+    :return: Predicted review score
+    :rtype: float
     """
-    # TODO: Prolly don't wanna do this every time...
-    data = read_conll(data)
+    # Just combine pros and cons
+    review = pros + cons
 
-    results = []
+    # Preprocess the raw input
+    # TODO: input = self.prepro_input(review)
 
-    for sentence, labels, predictions in self.model.output(self.sess, data):
-      predictions = [LBLS[l] for l in predictions]
+    # Get a prediction from the model
+    # TODO: score = self.model.predict([input])
+    score = 5.0
 
-      results.append({
-        'sentence': sentence,
-        'labels': labels,
-        'predictions': predictions
-      })
-
-    return results
-
-
-class EmbeddingConfigs(object):
-  vocab = ''
-  vectors = ''
+    return score

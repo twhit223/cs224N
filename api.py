@@ -18,7 +18,7 @@ api = Api(app=app, version='0.1', title='Glassdoor-NLP API')
 namespace = api.namespace('api')
 
 # Set up Predictor class to fetch predictions
-# predict_client = Predictor()
+predict_client = Predictor(model_path='fabian_model/model_glove_fulltrain_46accondev.h5')
 
 # Establish payload models
 prediction_model = api.model('Prediction', {
@@ -49,8 +49,7 @@ class Predict(Resource):
     cons = api.payload['cons']
 
     try:
-      prediction = 5.0
-      # prediction = predict_client.predict(pros=pros, cons=cons)
+      prediction = predict_client.predict(pros=pros, cons=cons)
     except BaseException as e:
       err_msg = 'Unexpected error while making prediction: {}'.format(e)
       return {'error': err_msg}, 500
