@@ -8,23 +8,24 @@ class Predictor(object):
   """
   Interface used for recurrent predictions after a one-time load of a model
   """
-  model_path = 'fabian_model/model_glove_fulltrain_46accondev.h5'
-  reviews_path = 'fabian_model/py3_public_company_reviews_text.pickle'
+  model_path = 'fabian_model/model_BiLSTM_GloVe.h5'
+  reviews_path = 'fabian_model/slice_public_companies_reviews_text.pickle'
   max_len = 200
 
   def __init__(self):
     """
     :param str model_path: Path to model to serve prediction with
     """
-    # Load model from disk
+    print('Loading model from disk...')
     self.model = load_model(self.model_path)
 
-    # Compile model
+    print('Compiling model...')
     self.model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
-    # Unpickle reviews
+    print('Unpickling reviews...')
     self.reviews = self.load_pkl(self.reviews_path)
 
+    print('Creating tokenizer...')
     self.tokenizer = Tokenizer()
     self.tokenizer.fit_on_texts(self.reviews)
 
@@ -32,7 +33,7 @@ class Predictor(object):
     with open(path, 'rb') as f:
       return pickle.load(f)
 
-  def prepro_input(self, input):
+  def prepro_review(self, review):
     """
     Preprocess the raw text review input with the following steps:
 
@@ -45,12 +46,12 @@ class Predictor(object):
     :rtype: Sequence of integers
     """
     # Convert text --> sequence
-    encoded_input = self.tokenizer.texts_to_sequences(input)
+    encoded_review = self.tokenizer.texts_to_sequences(review)
 
     # Pad the encoded input to a max length
-    encoded_input = pad_sequences(encoded_input, maxlen=self.max_len, padding='post')
+    padded_review = pad_sequences(encoded_review, maxlen=self.max_len, padding='post')
 
-    return encoded_input
+    return padded_review
 
   def predict(self, pros='', cons=''):
     """
@@ -65,11 +66,12 @@ class Predictor(object):
     review = [' '.join((pros, cons))]
 
     # Preprocess the raw input
-    preprocessed_review = self.prepro_input(review)
+    preprocessed_review = self.prepro_review(review)
 
     # Make prediction
     result = self.model.predict(preprocessed_review)
 
-    prediction = result.argmax(axis=-1)
+    # Format prediction into integer
+    prediction = int(result.argmax(axis=-1)[0])
 
     return prediction
