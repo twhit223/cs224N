@@ -2,3 +2,7 @@
 data/*
 results/*
 paper/*
+.idea/
+.env
+venv/
+

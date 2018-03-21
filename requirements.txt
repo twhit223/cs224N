@@ -1,0 +1,8 @@
+Flask==0.12.2
+flask-restplus==0.10.1
+requests==2.18.4
+tensorflow
+h5py
+nltk
+keras
+numpy
